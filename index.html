@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MyDigitalLibary | My Collection</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
   <script src="script.js" defer></script>
 </head>
 <body>
@@ -23,27 +22,37 @@
       <p>A little home for all the stories you love.</p>
     </section>
 
-    <section class="stats" aria-label="Collection statistics">
-      <div class="stat-card"><p>Total Books</p><h2 id="total-books">0</h2></div>
-      <div class="stat-card"><p>Books Read</p><h2 id="books-read">0</h2></div>
-      <div class="stat-card"><p>Currently Reading</p><h2 id="currently-reading">0</h2></div>
+    <section class="stats" aria-label="Financial statistics for the selected collection">
       <div class="stat-card"><p>Total Spent</p><h2 id="total-spent">$0.00</h2></div>
       <div class="stat-card savings-card"><p>Savings / Overspending</p><h2 id="total-saved">$0.00</h2></div>
       <div class="stat-card"><p>Total Current Value</p><h2 id="total-value">$0.00</h2></div>
     </section>
 
-    <aside class="savings-guide" aria-labelledby="savings-guide-title">
-      <h2 id="savings-guide-title">How your savings are calculated</h2>
-      <p>Current Value Price − Price Paid. <strong>Positive (+)</strong> means your books are currently worth more than you paid. <strong>Negative (−)</strong> means you paid more than their current estimated value. This is a value comparison, not money earned from selling your books.</p>
-      <p id="savings-note" aria-live="polite">Enter Price Paid and Current Value Price to see the difference.</p>
-    </aside>
+    <details class="savings-guide" id="savings-guide">
+      <summary id="savings-guide-title"><span class="quick-info-label">ⓘ Quick Info</span><span>How your savings are calculated</span><span class="disclosure-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="savings-guide-content">
+        <p><strong>Value Price − Price Paid.</strong> Positive (+) means your books are currently worth more than you paid. Negative (−) means you paid more than their current estimated value. This compares recorded values; it is not money you've earned by selling.</p>
+        <p id="savings-note" aria-live="polite">Enter Price Paid and Value Price to see the difference.</p>
+      </div>
+    </details>
 
     <section class="library-section">
       <div class="section-header">
-        <div><h2>My Collection</h2><p id="collection-description">Your personal book collection</p></div>
+        <div class="collection-heading"><h2>My Collection</h2>
+          <div class="collection-tabs" role="group" aria-label="Collection type">
+            <button type="button" class="collection-tab active" data-collection="all" aria-pressed="true">All</button>
+            <button type="button" class="collection-tab" data-collection="manga" aria-pressed="false">Manga</button>
+            <button type="button" class="collection-tab" data-collection="book" aria-pressed="false">Books</button>
+          </div>
+        </div>
         <button id="add-book" class="primary-button" type="button">+ Add Book</button>
       </div>
 
+      <div class="collection-tallies" aria-label="Book types in your library">
+        <div class="collection-tally"><span>All</span><strong id="count-all">0</strong></div>
+        <div class="collection-tally"><span>Manga</span><strong id="count-manga">0</strong></div>
+        <div class="collection-tally"><span>Regular Books</span><strong id="count-regular">0</strong></div>
+      </div>
       <div class="tools-bar">
         <div class="backup-actions">
           <button id="export-books" class="secondary-button" type="button">Export Backup</button>
@@ -59,6 +68,10 @@
         <div class="control search-control">
           <label for="search-books">Search your books</label>
           <input id="search-books" type="search" placeholder="Search title, author, or series…" autocomplete="off">
+          <div class="reading-mini-stats" aria-label="Reading progress">
+            <div class="reading-mini-stat"><span>Books Read</span><strong id="books-read">0</strong></div>
+            <div class="reading-mini-stat"><span>Currently Reading</span><strong id="currently-reading">0</strong></div>
+          </div>
         </div>
         <div class="control">
           <label for="filter-status">Reading status</label>
@@ -89,6 +102,14 @@
             <option value="sage">Soft sage</option>
             <option value="blush">Warm blush</option>
             <option value="midnight">Midnight</option>
+            <option value="lavender">Lavender Dream</option>
+            <option value="sky">Sky Blue</option>
+            <option value="peach">Soft Peach</option>
+            <option value="rose">Dusty Rose</option>
+            <option value="ocean">Deep Ocean</option>
+            <option value="coffee">Coffee & Cream</option>
+            <option value="forest">Forest Green</option>
+            <option value="plum">Rich Plum</option>
           </select>
         </div>
         <div class="control">
@@ -99,6 +120,13 @@
             <option value="rounded">Friendly — Trebuchet</option>
             <option value="simple">Clean — Verdana</option>
             <option value="literary">Bookish — Palatino</option>
+            <option value="elegant">Elegant — Garamond</option>
+            <option value="editorial">Editorial — Times</option>
+            <option value="humanist">Soft — Segoe UI</option>
+            <option value="technical">Technical — Consolas</option>
+            <option value="handwritten">Handwritten — Comic Sans</option>
+            <option value="compact">Compact — Tahoma</option>
+            <option value="modernmac">Sleek — System UI</option>
           </select>
         </div>
       </section>
@@ -117,43 +145,50 @@
         <h2 id="form-title">Add a New Book</h2>
         <button type="button" id="close-dialog" class="close-button" aria-label="Close">×</button>
       </div>
-      <!-- Phase 8: optional barcode or title lookup; manual entry still works -->
+      <!-- Free book lookup: manual entry remains available below -->
       <section class="book-lookup" aria-labelledby="lookup-heading">
-        <h3 id="lookup-heading">Quick add a book</h3>
-        <p class="field-hint">Scan the ISBN barcode on the back of your manga, or search by ISBN/title. Choose a matching edition before saving. You can always enter everything manually below.</p>
-        <div class="lookup-actions">
-          <button type="button" class="secondary-button" id="start-scan">📷 Scan Barcode</button>
-          <button type="button" class="secondary-button" id="stop-scan" hidden>Stop Camera</button>
-        </div>
-        <div id="barcode-reader" class="barcode-reader" hidden></div>
-        <p class="field-hint scan-help">For best results, point the rear camera at the <strong>long 13-digit barcode starting with 978 or 979</strong> (not the small 5-digit price barcode). Hold the book still in bright, even light and move the phone back slightly until the lines are sharp.</p>
-        <div class="photo-scan-row">
-          <label for="barcode-photo">Or scan a barcode photo</label>
-          <input id="barcode-photo" type="file" accept="image/*" capture="environment">
-          <p class="field-hint">Take a close, sharp photo of the ISBN barcode, or choose an existing photo. If scanning fails, type the 13 digits in the ISBN or Book Title box.</p>
-        </div>
-        <div id="barcode-photo-reader" class="barcode-photo-reader" aria-hidden="true"></div>
-        <label for="lookup-query">ISBN or Book Title</label>
+        <h3 id="lookup-heading">Find a Book</h3>
+        <p class="field-hint">Search by title or ISBN, select the matching edition, and check the optional price suggestion. For physical manga cover price, use Check publisher price. You can always enter everything manually.</p>
+        <label for="lookup-title">Search by Book Name</label>
         <div class="lookup-search-row">
-          <input id="lookup-query" type="search" placeholder="9781974700523 or One Piece Vol. 1" autocomplete="off">
-          <button id="lookup-search" type="button" class="primary-button">Look Up</button>
+          <input id="lookup-title" type="search" placeholder="e.g. One Piece Vol. 1" autocomplete="off">
+          <button id="lookup-title-button" type="button" class="primary-button">Search Name</button>
+        </div>
+        <label for="lookup-isbn">Search by ISBN-10 or ISBN-13</label>
+        <div class="lookup-search-row">
+          <input id="lookup-isbn" type="text" inputmode="numeric" placeholder="e.g. 9781974700523" autocomplete="off">
+          <button id="lookup-isbn-button" type="button" class="primary-button">Search ISBN</button>
         </div>
         <p id="lookup-message" role="status" aria-live="polite" class="lookup-message"></p>
         <div id="lookup-results" class="lookup-results" aria-label="Book matches"></div>
       </section>
-      <label for="book-title">Book Title *</label>
+      <fieldset class="book-type-tabs" aria-label="Choose what you are adding">
+        <legend>What are you adding?</legend>
+        <div class="type-tab-buttons">
+          <button type="button" id="type-manga" class="type-tab active" aria-pressed="true">📚 Manga</button>
+          <button type="button" id="type-book" class="type-tab" aria-pressed="false">📖 Book</button>
+        </div>
+      </fieldset>
+      <label for="book-title" id="book-title-label">Manga Name *</label>
       <input id="book-title" type="text" maxlength="120" required>
       <label for="book-author">Author</label>
       <input id="book-author" type="text" maxlength="100">
-      <label for="book-series">Series</label>
-      <input id="book-series" type="text" maxlength="100" placeholder="e.g. Manga series name">
-      <label for="book-volume">Volume Number</label>
+      <div id="regular-series-row" hidden>
+        <label for="book-series">Series (Optional)</label>
+        <input id="book-series" type="text" maxlength="100" placeholder="e.g. Harry Potter">
+      </div>
+      <p id="manga-series-hint" class="field-hint">Manga volumes are grouped automatically using the manga name. No separate series field needed.</p>
+      <label for="book-volume" id="book-volume-label">Volume Number</label>
       <input id="book-volume" type="number" min="0" step="1" placeholder="1">
       <label for="book-price">Price Paid ($)</label>
       <input id="book-price" type="number" min="0" step="0.01" placeholder="11.99">
-      <label for="book-value">Current Value Price ($) — optional</label>
+      <label for="book-value">Value Price ($) — optional</label>
       <input id="book-value" type="number" min="0" step="0.01" placeholder="Current estimated value">
-      <p class="field-hint">Enter what you estimate the book is worth now. It does not update automatically.</p>
+      <div id="price-suggestion" class="price-suggestion" hidden aria-live="polite">
+        <p id="suggested-price-text"></p>
+        <div class="price-actions"><button id="use-suggested-price" type="button" class="secondary-button">Use Google Books reference</button><button id="publisher-price-button" type="button" class="secondary-button" hidden>Check publisher price ↗</button></div>
+      </div>
+      <p class="field-hint">Value Price is entered or confirmed by you. Publisher retail prices are not the same as resale values. Google Books suggestions may be for ebooks, so verify the physical edition. Price Paid is always entered by you.</p>
       <label for="book-status">Reading Status</label>
       <select id="book-status">
         <option value="Unread">Unread</option>

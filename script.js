@@ -3,10 +3,11 @@ const STORAGE_KEY = "mydigitallibary-books-v1";
 const BACKUP_FORMAT = "MyDigitalLibary-backup";
 const PREFS_KEY = "mydigitallibary-preferences-v1";
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-const validThemes = ["minimal", "sage", "blush", "midnight"];
-const validFonts = ["modern", "classic", "rounded", "simple", "literary"];
+const validThemes = ["minimal", "sage", "blush", "midnight", "lavender", "sky", "peach", "rose", "ocean", "coffee", "forest", "plum"];
+const validFonts = ["modern", "classic", "rounded", "simple", "literary", "elegant", "editorial", "humanist", "technical", "handwritten", "compact", "modernmac"];
 let searchQuery = "";
 let statusFilter = "all";
+let collectionType = "all";
 let sortMode = "series-volume";
 let books = [];
 let editingId = null;
@@ -140,7 +141,8 @@ function getVisibleBooks() {
   const shown = indexed.filter(({book}) => {
     const matchesStatus = statusFilter === "all" || (book.status || "Unread") === statusFilter;
     const terms = [book.title, book.author, book.series].map(x => String(x || "").toLocaleLowerCase());
-    return matchesStatus && (!query || terms.some(x => x.includes(query)));
+    const matchesType = collectionType === "all" || inferBookType(book) === collectionType;
+    return matchesType && matchesStatus && (!query || terms.some(x => x.includes(query)));
   });
   shown.sort((a, b) => {
     const x = a.book, y = b.book;
@@ -191,6 +193,12 @@ function applyTheme(value) {
   $("library-theme").value = theme;
   savePreferences();
 }
+document.querySelectorAll(".collection-tab").forEach(button => {
+  button.addEventListener("click", () => {
+    collectionType = button.dataset.collection;
+    render();
+  });
+});
 $("search-books").addEventListener("input", (event) => {
   searchQuery = event.target.value;
   render();
@@ -248,8 +256,12 @@ function render() {
     appendCover(article, book);
     const info = document.createElement("div");
     info.className = "book-info";
-    info.append(makeText("h3", "", book.title), makeText("p", "book-author", book.author || "Unknown author"));
-    if (book.series) info.append(makeText("p", "book-series", book.series));
+    info.append(makeText("h3", "", book.title));
+    // Always show the author. Show the series line only for regular books.
+    info.append(makeText("p", "book-author", book.author || "Unknown author"));
+    if (inferBookType(book) === "book" && String(book.series || "").trim()) {
+      info.append(makeText("p", "book-series", `Series: ${book.series}`));
+    }
     info.append(makeText("span", "reading-status", book.status || "Unread"));
     article.append(info);
     article.addEventListener("click", () => openDetails(book.id));
@@ -258,15 +270,20 @@ function render() {
     });
     container.append(article);
   }
-  $("total-books").textContent = books.length;
-  $("books-read").textContent = books.filter(b => b.status === "Read").length;
-  $("currently-reading").textContent = books.filter(b => b.status === "Reading").length;
+  // Dashboard totals follow the selected collection tab, but do not depend
+  // on text search or reading-status filters. The All/Manga/Books tallies
+  // farther down the page continue to show the complete collection.
+  const dashboardBooks = collectionType === "all"
+    ? books
+    : books.filter(book => inferBookType(book) === collectionType);
+  $("books-read").textContent = dashboardBooks.filter(b => b.status === "Read").length;
+  $("currently-reading").textContent = dashboardBooks.filter(b => b.status === "Reading").length;
   // Use only valid, recorded prices; missing prices are not treated as zero
   // when calculating the per-book comparison.
   const recordedAmount = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
-  const totalSpent = books.reduce((sum, b) => sum + (recordedAmount(b.pricePaid) ? Number(b.pricePaid) : 0), 0);
-  const totalValue = books.reduce((sum, b) => sum + (recordedAmount(b.estimatedValue) ? Number(b.estimatedValue) : 0), 0);
-  const completeBooks = books.filter(b => recordedAmount(b.pricePaid) && recordedAmount(b.estimatedValue));
+  const totalSpent = dashboardBooks.reduce((sum, b) => sum + (recordedAmount(b.pricePaid) ? Number(b.pricePaid) : 0), 0);
+  const totalValue = dashboardBooks.reduce((sum, b) => sum + (recordedAmount(b.estimatedValue) ? Number(b.estimatedValue) : 0), 0);
+  const completeBooks = dashboardBooks.filter(b => recordedAmount(b.pricePaid) && recordedAmount(b.estimatedValue));
   // Positive = current collection value exceeds cost. Negative = overspent.
   // Compare only books that have both prices, avoiding misleading missing-data zeros.
   const differenceCents = completeBooks.reduce((sum, b) =>
@@ -277,21 +294,63 @@ function render() {
   $("total-saved").textContent = (difference > 0 ? "+" : "") + money(difference);
   $("total-saved").classList.toggle("positive-balance", difference > 0);
   $("total-saved").classList.toggle("negative-balance", difference < 0);
-  const coverage = `${completeBooks.length} of ${books.length} books have both prices entered.`;
+  const tabLabel = collectionType === "manga" ? "manga" : collectionType === "book" ? "regular books" : "books";
+  const coverage = `${completeBooks.length} of ${dashboardBooks.length} ${tabLabel} have both prices entered.`;
   $("savings-note").textContent = completeBooks.length === 0
     ? "Add Price Paid and Current Value Price to calculate your savings. " + coverage
     : (difference > 0 ? "You're ahead: your recorded books are worth more than you paid. "
       : difference < 0 ? "You overspent relative to their current value. "
       : "Your current value matches what you paid. ") + coverage;
-  $("collection-description").textContent = `${books.length} ${books.length === 1 ? "book" : "books"} in your collection`;
-  $("results-count").textContent = `Showing ${visibleBooks.length} of ${books.length} ${books.length === 1 ? "book" : "books"}`;
+  // Counts show the full library, independently of search and status filters.
+  $("count-all").textContent = books.length;
+  $("count-manga").textContent = books.filter(b => inferBookType(b) === "manga").length;
+  $("count-regular").textContent = books.filter(b => inferBookType(b) === "book").length;
+  document.querySelectorAll(".collection-tab").forEach(button => {
+    const active = button.dataset.collection === collectionType;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  const categoryTotal = collectionType === "all" ? books.length : books.filter(b => inferBookType(b) === collectionType).length;
+  const categoryName = collectionType === "manga" ? "manga" : collectionType === "book" ? "regular books" : "books";
+  $("results-count").textContent = `Showing ${visibleBooks.length} of ${categoryTotal} ${categoryName}`;
   container.className = "book-container grid-mode";
 }
+
+// Manga and regular books have different entry layouts.
+// Legacy records remain usable: infer manga only when an existing volume's
+// title and series refer to the same name, or the title explicitly says Vol.
+let selectedBookType = "manga";
+function inferBookType(book) {
+  if (book?.bookType === "manga" || book?.bookType === "book") return book.bookType;
+  if (!book) return "manga";
+  const hasVolume = volumeNumber(book) !== null;
+  const baseTitle = titleWithoutVolume(book.title).toLocaleLowerCase();
+  const storedSeries = String(book.series || "").trim().toLocaleLowerCase();
+  const volumeInTitle = baseTitle !== String(book.title || "").trim().toLocaleLowerCase();
+  return hasVolume && (volumeInTitle || (storedSeries && storedSeries === baseTitle)) ? "manga" : "book";
+}
+function setBookType(type) {
+  selectedBookType = type === "book" ? "book" : "manga";
+  const manga = selectedBookType === "manga";
+  $("type-manga").classList.toggle("active", manga);
+  $("type-book").classList.toggle("active", !manga);
+  $("type-manga").setAttribute("aria-pressed", String(manga));
+  $("type-book").setAttribute("aria-pressed", String(!manga));
+  $("regular-series-row").hidden = manga;
+  $("manga-series-hint").hidden = !manga;
+  // Both manga and books can show an optional lookup price.
+  $("book-title-label").textContent = manga ? "Manga Name *" : "Book Title *";
+  $("book-volume-label").textContent = manga ? "Volume Number" : "Book Number (Optional)";
+  $("book-title").placeholder = manga ? "e.g. One Piece" : "e.g. The Chamber of Secrets";
+}
+$("type-manga").addEventListener("click", () => setBookType("manga"));
+$("type-book").addEventListener("click", () => setBookType("book"));
 
 function openForm(book = null) {
   form.reset();
   $("form-error").textContent = "";
   editingId = book ? book.id : null;
+  setBookType(inferBookType(book));
   $("form-title").textContent = book ? "Edit Book" : "Add a New Book";
   $("save-book").textContent = book ? "Save Changes" : "Save Book";
   $("remove-cover-row").hidden = !(book && isSafeImage(book.image));
@@ -308,9 +367,11 @@ function openForm(book = null) {
     $("book-value").value = book.estimatedValue ?? "";
     $("book-status").value = statusOptions.includes(book.status) ? book.status : "Unread";
   }
-  $("lookup-query").value = "";
+  $("lookup-title").value = "";
+  $("lookup-isbn").value = "";
   $("lookup-message").textContent = "";
   $("lookup-results").replaceChildren();
+  clearSuggestedPrice();
   bookDialog.showModal();
 }
 $("add-book").addEventListener("click", () => openForm());
@@ -337,7 +398,8 @@ function openDetails(id) {
   list.className = "detail-list";
   addDetail(list, "Title", book.title);
   addDetail(list, "Author", book.author || "Not recorded");
-  addDetail(list, "Series", book.series || "Not recorded");
+  addDetail(list, "Type", inferBookType(book) === "manga" ? "Manga" : "Book");
+  if (inferBookType(book) === "book") addDetail(list, "Series", book.series || "Not recorded");
   addDetail(list, "Volume", book.volume !== "" && book.volume != null ? String(book.volume) : "Not recorded");
   addDetail(list, "Reading Status", book.status || "Unread");
   addDetail(list, "Price Paid", displayPrice(book.pricePaid));
@@ -346,7 +408,7 @@ function openDetails(id) {
     const difference = differenceCents / 100;
     if (Number.isFinite(difference)) addDetail(list, "Savings / Overspending (Value − Paid)", (difference > 0 ? "+" : "") + money(difference));
   }
-  addDetail(list, "Current Value Price", displayPrice(book.estimatedValue));
+  addDetail(list, "Value Price", displayPrice(book.estimatedValue));
   if (book.amazonUrl && validAmazonLink(book.amazonUrl)) {
     const dt = makeText("dt", "", "Amazon listing");
     const dd = document.createElement("dd");
@@ -426,12 +488,17 @@ form.addEventListener("submit", async (event) => {
       id: original?.id || crypto.randomUUID(),
       title: cleanText($("book-title").value, 120),
       author: cleanText($("book-author").value, 100),
-      series: cleanText($("book-series").value, 100),
+      series: selectedBookType === "manga"
+        ? cleanText(titleWithoutVolume($("book-title").value) || $("book-title").value, 100)
+        : cleanText($("book-series").value, 100),
+      bookType: selectedBookType,
       volume: $("book-volume").value,
       pricePaid: $("book-price").value === "" ? null : Number($("book-price").value),
       // Retain old original price in saved records only for backward compatibility.
       originalPrice: original?.originalPrice ?? null,
       estimatedValue: $("book-value").value === "" ? null : Number($("book-value").value),
+      // Preserve legacy data without exposing the retired back-cover code UI.
+      backPriceCode: original?.backPriceCode || "",
       status: $("book-status").value,
       color: original?.color || "#53677a",
       image,
@@ -457,16 +524,89 @@ form.addEventListener("submit", async (event) => {
 });
 
 
-/* PHASE 8: Optional book lookup and barcode scanning.
- * Book metadata is retrieved from Open Library, not Amazon.
- * Price Paid and Current Value Price are ALWAYS entered manually.
+/* Search-only book lookup. No webcam permission, barcode scanner or camera libraries.
+ * Open Library is a free source of metadata; missing titles/covers can be added manually.
  */
-const lookupInput = $("lookup-query");
 const lookupMessage = $("lookup-message");
 const lookupResults = $("lookup-results");
-let barcodeScanner = null;
-let scanStarting = false;
 let lookupSequence = 0;
+let selectedLookupPrice = null;
+let priceRequestSequence = 0;
+function clearSuggestedPrice() {
+  priceRequestSequence++;
+  selectedLookupPrice = null;
+  $("price-suggestion").hidden = true;
+  $("use-suggested-price").hidden = true;
+  $("suggested-price-text").textContent = "";
+  $("publisher-price-button").hidden = true;
+  publisherPriceSearchUrl = "";
+}
+$("use-suggested-price").addEventListener("click", () => {
+  if (selectedLookupPrice === null) return;
+  $("book-value").value = selectedLookupPrice.toFixed(2);
+  $("suggested-price-text").textContent += " Applied — you can still edit this price to match your physical edition.";
+});
+// Price suggestions are not the physical cover MSRP. Google Books saleInfo
+// describes the Google eBookstore, even if the identifier matches a print ISBN.
+// For physical publisher pricing, the button below opens a targeted search
+// so the user can independently verify the ISBN and edition.
+let publisherPriceSearchUrl = "";
+function setPublisherPriceSearch(book) {
+  const term = [book.isbn || "", book.title || "", "publisher", "paperback", "list price MSRP"].filter(Boolean).join(" ");
+  publisherPriceSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(term)}`;
+  $("publisher-price-button").hidden = false;
+}
+$("publisher-price-button").addEventListener("click", () => {
+  if (publisherPriceSearchUrl) window.open(publisherPriceSearchUrl, "_blank", "noopener,noreferrer");
+});
+async function lookupGoogleBooksPrice(book) {
+  const isbn = book.isbn && validISBN(book.isbn) ? book.isbn : "";
+  const query = isbn ? `isbn:${isbn}` : `intitle:${book.title}`;
+  const params = new URLSearchParams({ q: query, maxResults: "15", country: "US", printType: "books" });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`https://www.googleapis.com/books/v1/volumes?${params}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`Google Books HTTP ${response.status}`);
+    const data = await response.json();
+    const candidates = (data.items || []).filter(v => {
+      if (isbn) return (v.volumeInfo?.industryIdentifiers || []).some(id => isbnClean(id.identifier) === isbn);
+      const normalize = t => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return normalize(v.volumeInfo?.title) === normalize(book.title);
+    });
+    for (const volume of candidates) {
+      const price = volume.saleInfo?.listPrice || volume.saleInfo?.retailPrice;
+      if (price?.currencyCode === "USD" && Number.isFinite(price.amount) && price.amount > 0) {
+        return { amount: price.amount, title: volume.volumeInfo?.title || book.title, exactIsbn: Boolean(isbn) };
+      }
+    }
+    return null;
+  } finally { clearTimeout(timeout); }
+}
+async function offerSuggestedPrice(book) {
+  clearSuggestedPrice();
+  setPublisherPriceSearch(book);
+  const requestId = priceRequestSequence;
+  $("price-suggestion").hidden = false;
+  $("suggested-price-text").textContent = "Checking whether Google Books has a reference price for this edition…";
+  try {
+    const match = await lookupGoogleBooksPrice(book);
+    if (requestId !== priceRequestSequence || !bookDialog.open) return;
+    if (!match) {
+      $("suggested-price-text").textContent = "No Google Books USD price found. To find the physical price printed on the back of your manga, choose Check publisher price and verify the exact edition; then enter it in Value Price.";
+      $("use-suggested-price").hidden = true;
+      return;
+    }
+    selectedLookupPrice = match.amount;
+    $("suggested-price-text").textContent = `Google Books reference: ${money(match.amount)} for “${match.title}” (${match.exactIsbn ? "matching ISBN" : "matching title"}). This may be an EBOOK/Google store price — NOT a verified price printed on the physical manga. Check the publisher's physical list price before using.`;
+    $("use-suggested-price").hidden = false;
+  } catch (err) {
+    if (requestId !== priceRequestSequence || !bookDialog.open) return;
+    $("suggested-price-text").textContent = "Google Books price information is unavailable. You can still check the publisher's listed price or type Value Price manually.";
+    $("use-suggested-price").hidden = true;
+    console.warn("Optional price lookup unavailable:", err);
+  }
+}
 
 function setLookupMessage(message) { lookupMessage.textContent = message; }
 function isbnClean(value) { return String(value || "").replace(/[^0-9Xx]/g, "").toUpperCase(); }
@@ -498,7 +638,8 @@ function normalizeSearchDoc(doc) {
     volume: getVolumeFromTitle(title),
     image: availableCover(doc.cover_i),
     edition: Array.isArray(doc.edition_key) ? doc.edition_key[0] : "",
-    year: doc.first_publish_year || ""
+    year: doc.first_publish_year || "",
+    isbn: Array.isArray(doc.isbn) ? (doc.isbn.find(v => validISBN(v)) || "") : ""
   };
 }
 async function fetchOpenLibraryJson(url) {
@@ -515,12 +656,15 @@ async function fetchOpenLibraryJson(url) {
 }
 async function findByISBN(isbn) {
   const edition = await fetchOpenLibraryJson(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`);
-  if (!edition) return [];
+  if (!edition) {
+    const fallback = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&fields=title,author_name,cover_i,edition_key,first_publish_year,isbn&limit=8`);
+    return (fallback?.docs || []).map(normalizeSearchDoc).filter(Boolean);
+  }
   let author = "";
   let searchCover = "";
   // Author names are often absent from an edition's JSON. A second search fills them in when available.
   try {
-    const other = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&fields=title,author_name,cover_i,edition_key,first_publish_year&limit=5`);
+    const other = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&fields=title,author_name,cover_i,edition_key,first_publish_year,isbn&limit=5`);
     const docs = (other?.docs || []).map(normalizeSearchDoc).filter(Boolean);
     if (docs.length) {
       author = docs[0].author;
@@ -536,20 +680,30 @@ async function findByISBN(isbn) {
     volume: getVolumeFromTitle(title),
     image: availableCover((edition.covers || [])[0]) || searchCover,
     edition: edition.key?.split("/").pop() || "",
-    year: edition.publish_date || ""
+    year: edition.publish_date || "",
+    isbn
   }];
 }
 async function findByTitle(title) {
-  const query = new URLSearchParams({ q: title, fields: "title,author_name,cover_i,edition_key,first_publish_year", limit: "8" });
-  const response = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?${query.toString()}`);
+  const query = new URLSearchParams({ title, fields: "title,author_name,cover_i,edition_key,first_publish_year,isbn", limit: "12" });
+  let response = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?${query.toString()}`);
+  if (!response?.docs?.length) {
+    const broad = new URLSearchParams({ q: title, fields: "title,author_name,cover_i,edition_key,first_publish_year,isbn", limit: "12" });
+    response = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?${broad.toString()}`);
+  }
   return (response?.docs || []).map(normalizeSearchDoc).filter(Boolean);
 }
 function applyLookupResult(book) {
   $("book-title").value = book.title;
   $("book-author").value = book.author;
-  $("book-series").value = book.series;
+  if (selectedBookType === "book") {
+    $("book-series").value = book.series;
+  } else {
+    // Keep manga names such as One Piece Vol. 2 grouped together.
+    $("book-series").value = titleWithoutVolume(book.title) || book.series || book.title;
+  }
   $("book-volume").value = book.volume;
-  // Leave Price Paid, Current Value, and Reading Status completely untouched.
+  // Price Paid is always manually entered; Value Price is only changed if the user accepts a reference price.
   if (book.image && isSafeImage(book.image)) {
     // A previously chosen upload would otherwise override this searched cover.
     $("book-cover").value = "";
@@ -562,6 +716,7 @@ function applyLookupResult(book) {
   }
   lookupResults.replaceChildren();
   if (book.image) setLookupMessage("Details and cover link added! Check the cover preview below, then enter prices and Save Book. If the picture is missing, upload a cover file instead.");
+  offerSuggestedPrice(book);
   $("book-title").focus();
 }
 function showLookupResults(results) {
@@ -593,228 +748,56 @@ function showLookupResults(results) {
     lookupResults.appendChild(button);
   }
 }
-async function runBookLookup(query = lookupInput.value) {
-  const text = String(query || "").trim();
+async function runBookLookup(type, raw) {
+  const text = String(raw || "").trim();
   const sequence = ++lookupSequence;
   lookupResults.replaceChildren();
-  if (!text) { setLookupMessage("Enter a book title or ISBN first."); return; }
-  const maybeISBN = isbnClean(text);
-  const isCandidateISBN = /^[0-9Xx\s-]+$/.test(text) && [10, 13].includes(maybeISBN.length);
-  if (isCandidateISBN && !validISBN(maybeISBN)) { setLookupMessage("That ISBN has an invalid check digit. Check the numbers and try again."); return; }
-  setLookupMessage("Searching Open Library…");
-  $("lookup-search").disabled = true;
+  clearSuggestedPrice();
+  if (!text) {
+    setLookupMessage(type === "isbn" ? "Enter the ISBN number printed on your book." : "Enter the book name to search.");
+    return;
+  }
+  let searchText = text;
+  if (type === "isbn") {
+    searchText = isbnClean(text);
+    if (![10, 13].includes(searchText.length) || !validISBN(searchText)) {
+      setLookupMessage("Enter a valid 10- or 13-digit ISBN. Check the numbers underneath the book's barcode.");
+      return;
+    }
+  }
+  const titleButton = $("lookup-title-button");
+  const isbnButton = $("lookup-isbn-button");
+  titleButton.disabled = isbnButton.disabled = true;
+  setLookupMessage(`Searching by ${type === "isbn" ? "ISBN" : "book name"}…`);
   try {
-    const results = isCandidateISBN ? await findByISBN(maybeISBN) : await findByTitle(text);
+    const results = type === "isbn" ? await findByISBN(searchText) : await findByTitle(searchText);
+    if (type === "isbn") results.forEach(book => { book.isbn = searchText; });
     if (sequence !== lookupSequence) return;
     if (results.length) {
       showLookupResults(results);
-      setLookupMessage(`${results.length} matching ${results.length === 1 ? "edition" : "results"} found. Tap the correct book to fill the form. Check the cover and volume before saving.`);
+      setLookupMessage(`${results.length} possible ${results.length === 1 ? "match" : "matches"}. Select the correct edition, then review its cover and volume before saving.`);
     } else {
-      setLookupMessage("No matching edition was found. Try searching by title, or enter the book manually below.");
+      setLookupMessage("No book found. Try a shorter title, another ISBN, or enter the details manually below.");
     }
   } catch (error) {
     if (sequence !== lookupSequence) return;
-    console.error("Book lookup failed", error);
-    setLookupMessage("Lookup couldn't connect. Check your internet connection; open the published HTTPS site, or add the book manually below.");
-  } finally { if (sequence === lookupSequence) $("lookup-search").disabled = false; }
-}
-$("lookup-search").addEventListener("click", () => runBookLookup());
-lookupInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); runBookLookup(); } });
-
-// Accept only verified ISBN-13 book codes, not the supplemental 5-digit price barcode.
-function readScannedISBN(raw) {
-  const number = isbnClean(raw);
-  return /^(978|979)\d{10}$/.test(number) && validISBN(number) ? number : "";
-}
-let scanDetected = false;
-let stopPromise = null;
-
-async function stopBarcodeScanner() {
-  if (stopPromise) return stopPromise;
-  const current = barcodeScanner;
-  barcodeScanner = null;
-  $("stop-scan").hidden = true;
-  stopPromise = (async () => {
-    if (current) {
-      try { await current.stop(); } catch (error) { console.warn("Scanner stop:", error); }
-      try { current.clear(); } catch (error) { console.warn("Scanner clear:", error); }
-    }
-    $("barcode-reader").hidden = true;
-    $("start-scan").disabled = false;
-  })();
-  try { await stopPromise; } finally { stopPromise = null; }
-}
-
-async function handleDetectedBarcode(raw) {
-  if (scanDetected) return;
-  const isbn = readScannedISBN(raw);
-  if (!isbn) {
-    // An EAN-5 price label can be detected first. Keep the camera active.
-    setLookupMessage("Detected a barcode, but not a valid 978/979 ISBN-13. Aim at the larger 13-digit barcode, or enter its numbers below.");
-    return;
-  }
-  scanDetected = true;
-  lookupInput.value = isbn;
-  setLookupMessage(`ISBN ${isbn} scanned! Looking up the book…`);
-  // Release the camera before searching, so the user can inspect results.
-  await stopBarcodeScanner();
-  await runBookLookup(isbn);
-}
-
-$("start-scan").addEventListener("click", async () => {
-  if (scanStarting || barcodeScanner || stopPromise) return;
-  if (!window.isSecureContext) {
-    setLookupMessage("Camera scanning needs HTTPS. Open your published GitHub Pages site on the iPhone, or type an ISBN.");
-    return;
-  }
-  if (typeof Html5Qrcode === "undefined") {
-    setLookupMessage("The free barcode scanning library didn't load. Check your connection and refresh, or enter the ISBN manually.");
-    return;
-  }
-  scanStarting = true;
-  scanDetected = false;
-  $("start-scan").disabled = true;
-  $("barcode-reader").hidden = false;
-  setLookupMessage("Requesting webcam access… Allow the camera when your browser asks.");
-  try {
-    const scanner = new Html5Qrcode("barcode-reader", {
-      formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A],
-      verbose: false
-    });
-    barcodeScanner = scanner;
-    // getCameras requests permission in supported browsers and lists the actual devices.
-    if (!navigator.mediaDevices?.getUserMedia) {
-      throw new Error("Browser camera API unavailable. Open the site at https:// or http://localhost and use Chrome, Edge, or Safari.");
-    }
-    const cameras = await Html5Qrcode.getCameras();
-    if (!cameras.length) {
-      throw new Error("No camera found. Check your computer's webcam settings.");
-    }
-    const preferred = cameras.find(camera =>
-      /back|rear|environment/i.test(camera.label)
-    ) || cameras[0];
-    setLookupMessage(`Starting camera: ${preferred.label || "Webcam"}…`);
-    await scanner.start(
-      preferred.id,
-      {
-        fps: 10,
-        // Use a wide, automatically sized scanning guide on all devices.
-        qrbox: (w, h) => ({
-          width: Math.max(1, Math.min(340, Math.floor(w * 0.9))),
-          height: Math.max(1, Math.min(140, Math.floor(h * 0.38)))
-        })
-      },
-      (code) => { void handleDetectedBarcode(code); },
-      () => {} // No match in a frame is normal.
-    );
-    if (!scanDetected) {
-      $("stop-scan").hidden = false;
-      setLookupMessage("Camera ready. Hold the 978/979 ISBN barcode INSIDE the guide, with sharp, readable lines. Laptop webcams may not focus well up close; try the Barcode Photo option if needed.");
-    }
-  } catch (error) {
-    console.error("Barcode scan failed", error);
-    const details = error?.message || String(error);
-    const name = error?.name || "";
-    const advice = /NotAllowed|Permission/i.test(name + details)
-      ? "Camera permission was blocked. Click the camera icon beside your browser address and choose Allow. Also check Windows Settings → Privacy & security → Camera."
-      : /NotFound|DevicesNotFound|No camera/i.test(name + details)
-      ? "No webcam was found. Test it in the Windows Camera app and check the webcam privacy switch."
-      : /NotReadable|TrackStart|Could not start/i.test(name + details)
-      ? "The webcam may be busy. Close Zoom/Teams or the Windows Camera app and retry."
-      : "Try the Windows Camera app to confirm your webcam works, then retry on HTTPS or localhost.";
-    setLookupMessage(`Camera error (${name || "unknown"}): ${details}. ${advice} You can still scan a photo or type the ISBN.`);
-    await stopBarcodeScanner();
+    console.error("Book lookup error:", error);
+    setLookupMessage(`Book lookup failed (${error.name === "AbortError" ? "request timed out" : "connection or service error"}). Check your internet connection or enter the book manually below.`);
   } finally {
-    scanStarting = false;
+    if (sequence === lookupSequence) titleButton.disabled = isbnButton.disabled = false;
   }
-});
-$("stop-scan").addEventListener("click", () => { void stopBarcodeScanner(); });
-
-// Photo scanning works even if live video decoding struggles with a barcode.
-// Photos can contain the ISBN barcode in a small part of a large image.
-// Try the original file, then a centered crop, then boosted contrast versions.
-function makeBarcodeVariant(file, kind) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        const sw = img.naturalWidth, sh = img.naturalHeight;
-        // Crop a generous center area without assuming portrait vs landscape.
-        const crop = kind === "center" || kind === "contrast-center";
-        const x = crop ? sw * .08 : 0, y = crop ? sh * .12 : 0;
-        const w = crop ? sw * .84 : sw, h = crop ? sh * .76 : sh;
-        const scale = Math.min(1, 1800 / Math.max(w, h));
-        canvas.width = Math.max(1, Math.round(w * scale));
-        canvas.height = Math.max(1, Math.round(h * scale));
-        const ctx = canvas.getContext("2d", {willReadFrequently:true});
-        if (kind.includes("contrast")) ctx.filter = "grayscale(1) contrast(180%)";
-        ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(blob => {
-          URL.revokeObjectURL(url);
-          if (!blob) return reject(new Error("Could not process the barcode photo"));
-          resolve(new File([blob], "barcode-scan.png", {type:"image/png"}));
-        }, "image/png");
-      } catch(error) { URL.revokeObjectURL(url); reject(error); }
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not open that photo")); };
-    img.src = url;
+}
+$("lookup-title-button").addEventListener("click", () => runBookLookup("title", $("lookup-title").value));
+$("lookup-isbn-button").addEventListener("click", () => runBookLookup("isbn", $("lookup-isbn").value));
+for (const [id, type] of [["lookup-title", "title"], ["lookup-isbn", "isbn"]]) {
+  $(id).addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runBookLookup(type, event.currentTarget.value);
+    }
   });
 }
-
-$("barcode-photo").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  if (typeof Html5Qrcode === "undefined") {
-    setLookupMessage("Scanner library didn't load. Check the internet connection and refresh. You can type the ISBN manually.");
-    return;
-  }
-  if (file.size > 15 * 1024 * 1024) {
-    setLookupMessage("Choose a barcode photo smaller than 15 MB.");
-    event.target.value = "";
-    return;
-  }
-  await stopBarcodeScanner();
-  const photoReader = $("barcode-photo-reader");
-  const photoScanner = new Html5Qrcode("barcode-photo-reader", {
-    formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.UPC_A],
-    verbose: false
-  });
-  try {
-    let found = "";
-    const variants = ["original", "center", "contrast", "contrast-center"];
-    for (let i = 0; i < variants.length; i++) {
-      setLookupMessage(`Checking barcode photo (${i + 1}/${variants.length})…`);
-      try {
-        const candidate = i === 0 ? file : await makeBarcodeVariant(file, variants[i]);
-        const result = await photoScanner.scanFile(candidate, false);
-        found = readScannedISBN(result);
-        if (found) break;
-      } catch (error) { console.debug("Photo scan attempt", variants[i], error); }
-    }
-    if (found) {
-      lookupInput.value = found;
-      setLookupMessage(`Found ISBN ${found}! Searching the book database…`);
-      await runBookLookup(found);
-    } else {
-      setLookupMessage("No valid ISBN-13 detected in this photo. Photograph only the large 978/979 barcode straight-on with clear focus, or type the 13 digits printed below it and tap Look Up Book.");
-    }
-  } catch (error) {
-    console.warn("Photo scan error", error);
-    setLookupMessage(`Couldn't process the photo: ${error?.message || String(error)}. You can enter its printed ISBN below.`);
-  } finally {
-    try { photoScanner.clear(); } catch (error) { console.debug(error); }
-    photoReader.replaceChildren();
-    event.target.value = "";
-  }
-});
-bookDialog.addEventListener("close", () => {
-  lookupSequence++;
-  scanDetected = true;
-  void stopBarcodeScanner();
-});
-
+bookDialog.addEventListener("close", () => { lookupSequence++; clearSuggestedPrice(); });
 
 // Download an entire JSON backup, including book cover image data.
 $("export-books").addEventListener("click", () => {

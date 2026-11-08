@@ -262,10 +262,10 @@ body, button, input, select, textarea { font-family: var(--library-font, Arial, 
 @media (min-width: 851px) {
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
   .stats .stat-card { min-width: 0; }
-  .stats .stat-card:nth-child(n+4) { padding: 28px 26px; min-height: 132px; }
+  .stats .stat-card { padding: 28px 26px; min-height: 132px; }
 }
 /* Keep currency cents together and easy to read, not broken mid-number. */
-.stats .stat-card:nth-child(n+4) h2 {
+.stats .stat-card h2 {
   font-size: clamp(22px, 2.3vw, 34px);
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
@@ -276,15 +276,15 @@ body, button, input, select, textarea { font-family: var(--library-font, Arial, 
 }
 @media (min-width: 601px) and (max-width: 850px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats .stat-card:nth-child(n+4) { min-width: 0; padding: 24px; }
+  .stats .stat-card { min-width: 0; padding: 24px; }
 }
 @media (max-width: 600px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats .stat-card:nth-child(n+4) {
+  .stats .stat-card {
     grid-column: 1 / -1;
     padding: 22px 24px;
   }
-  .stats .stat-card:nth-child(n+4) h2 { font-size: 30px; }
+  .stats .stat-card h2 { font-size: 30px; }
 }
 
 
@@ -330,3 +330,140 @@ body, button, input, select, textarea { font-family: var(--library-font, Arial, 
 .barcode-photo-reader img, .barcode-photo-reader canvas { max-width: 100%; height: auto; }
 .barcode-reader { min-height: 0; }
 .barcode-reader video { width:100% !important; height:auto !important; object-fit:contain; }
+
+/* Search-only update: independent title and ISBN fields */
+.book-lookup .lookup-search-row { margin: 7px 0 17px; }
+.book-lookup .lookup-search-row input { width: 100%; }
+@media (max-width: 420px) { .book-lookup .lookup-search-row button { width: 100%; } }
+
+/* Optional reference price, separate from the user's recorded physical-book value */
+.price-suggestion { margin: 12px 0; padding: 13px 15px; background: var(--soft, #f6f6f6); border: 1px solid var(--border, #ddd); border-radius: 10px; }
+.price-suggestion[hidden] { display:none !important; }
+.price-suggestion p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
+.price-suggestion button { max-width: 100%; }
+
+
+/* Manga / Book selection tabs */
+.book-type-tabs { border: 0; padding: 0; margin: 18px 0 15px; min-width: 0; }
+.book-type-tabs legend { font-weight: 700; font-size: 13px; margin-bottom: 9px; }
+.type-tab-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#book-form .type-tab { border: 1px solid var(--border, #ddd); background: var(--paper, #fff); color: var(--ink, #222); border-radius: 9px; padding: 13px; cursor: pointer; font-weight: 600; }
+#book-form .type-tab.active { background: var(--accent, #292929); color: #fff; border-color: var(--accent, #292929); }
+#book-form .type-tab:focus-visible { outline: 2px solid var(--accent, #333); outline-offset: 3px; }
+#regular-series-row[hidden], #manga-series-hint[hidden] { display: none !important; }
+
+
+/* Physical-edition price verification controls */
+.price-actions {display:flex; gap:9px; flex-wrap:wrap;}
+.price-actions button {flex:1 1 170px;}
+
+/* Collection-type tabs and tallies — version 2026-11-08 */
+.collection-heading { display:flex; flex-wrap:wrap; align-items:center; gap:14px 22px; }
+.collection-tabs { display:flex; flex-wrap:wrap; gap:5px; padding:5px; border:1px solid var(--line); background:var(--soft); border-radius:12px; }
+.collection-tab { border:0; background:transparent; border-radius:8px; padding:10px 18px; color:var(--ink); font-weight:600; }
+.collection-tab:hover { outline:1px solid var(--line); }
+.collection-tab.active { background:var(--paper); box-shadow:0 1px 5px #0000001c; }
+.collection-tab:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+.collection-tallies { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:22px 0 10px; }
+.collection-tally { min-width:0; background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:18px 20px; }
+.collection-tally span { display:block; color:var(--muted); font-size:13px; }
+.collection-tally strong { display:block; color:var(--ink); font-size:clamp(25px,3vw,38px); line-height:1.2; margin-top:8px; font-variant-numeric:tabular-nums; }
+@media(max-width:600px) { .collection-tallies { gap:8px; } .collection-tally { padding:13px 11px; } .collection-tally span { font-size:11px; } .collection-tab { padding:10px 14px; } }
+/* Additional free themes */
+:root[data-theme="lavender"] { --page:#f7f4ff; --paper:#ffffff; --ink:#3c3154; --muted:#796e91; --line:#e8dff8; --soft:#eee7fa; --accent:#7252a1; --shelf:#f6f0fb; --wood:#c2a6dd; --wood-dark:#9b7dbc; }
+:root[data-theme="sky"] { --page:#f1f9ff; --paper:#ffffff; --ink:#213e56; --muted:#627f92; --line:#d9eaf5; --soft:#e4f2fb; --accent:#3579a8; --shelf:#ecf7fd; --wood:#a9c6d9; --wood-dark:#7ca1bc; }
+:root[data-theme="peach"] { --page:#fff8f2; --paper:#ffffff; --ink:#583b31; --muted:#947b70; --line:#f3dfd1; --soft:#ffebdd; --accent:#b76649; --shelf:#fff2e7; --wood:#e7b39a; --wood-dark:#c58c72; }
+:root[data-theme="rose"] { --page:#fbf3f6; --paper:#ffffff; --ink:#533342; --muted:#916b7d; --line:#efdae3; --soft:#f6e4ec; --accent:#a14e75; --shelf:#f9edf2; --wood:#dcaabb; --wood-dark:#b98097; }
+:root[data-theme="ocean"] { --page:#12252f; --paper:#1b3440; --ink:#f1f9f9; --muted:#bbd0d4; --line:#355261; --soft:#284451; --accent:#a4e0db; --shelf:#1a3540; --wood:#688d90; --wood-dark:#41676e; }
+:root[data-theme="coffee"] { --page:#f7f1e9; --paper:#fffdfa; --ink:#49362b; --muted:#806d5f; --line:#e6dacb; --soft:#eee2d3; --accent:#79523e; --shelf:#f2e9dd; --wood:#c7a584; --wood-dark:#9e7858; }
+:root[data-theme="forest"] { --page:#12271d; --paper:#1d3829; --ink:#f0f8ef; --muted:#bdd3c2; --line:#385a43; --soft:#2a4936; --accent:#b9ddb0; --shelf:#233b2c; --wood:#79966d; --wood-dark:#526d4b; }
+:root[data-theme="plum"] { --page:#241a30; --paper:#362842; --ink:#faf1ff; --muted:#d1bedc; --line:#5a4365; --soft:#483454; --accent:#e2b9ed; --shelf:#34253e; --wood:#9876a6; --wood-dark:#725781; }
+:root[data-theme="ocean"] .primary-button, :root[data-theme="forest"] .primary-button, :root[data-theme="plum"] .primary-button { color:#152333; }
+:root[data-font="elegant"] { --library-font:Garamond,"Baskerville",Georgia,serif; }
+:root[data-font="editorial"] { --library-font:"Times New Roman",Times,serif; }
+:root[data-font="humanist"] { --library-font:"Segoe UI",Arial,sans-serif; }
+:root[data-font="technical"] { --library-font:Consolas,"Courier New",monospace; }
+:root[data-font="handwritten"] { --library-font:"Comic Sans MS","Comic Sans",cursive; }
+:root[data-font="compact"] { --library-font:Tahoma,Geneva,sans-serif; }
+:root[data-font="modernmac"] { --library-font:system-ui,-apple-system,"Segoe UI",sans-serif; }
+
+/* Compact dashboard: just three money cards up top */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.stats .stat-card { min-width: 0; padding: 25px 24px; min-height: 126px; }
+.stats .stat-card h2 {
+  font-size: clamp(23px, 2.5vw, 36px);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+/* Expandable business-style Quick Info panel; collapsed by default */
+.savings-guide {
+  margin: 0 0 38px;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  overflow: hidden;
+}
+.savings-guide > summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 15px 19px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 650;
+}
+.savings-guide > summary::-webkit-details-marker { display: none; }
+.savings-guide > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.quick-info-label {
+  font-size: 11px;
+  letter-spacing: .02em;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--ink);
+}
+.disclosure-chevron { margin-left: auto; font-size: 19px; transition: transform .2s; }
+.savings-guide[open] .disclosure-chevron { transform: rotate(180deg); }
+.savings-guide-content { border-top: 1px solid var(--line); padding: 10px 19px 17px; }
+.savings-guide-content p { font-size: 13px; line-height: 1.55; }
+/* Subtle read/reading mini totals live below the search input */
+.reading-mini-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
+.reading-mini-stat {
+  flex: 1 1 105px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  padding: 9px 11px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.reading-mini-stat span { color: var(--muted); font-size: 11px; }
+.reading-mini-stat strong { color: var(--ink); font-size: 18px; font-variant-numeric: tabular-nums; }
+@media (max-width: 850px) {
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .stats .stat-card { padding: 19px 16px; min-height: 110px; }
+  .stats .stat-card h2 { font-size: clamp(18px, 2.8vw, 28px); }
+}
+@media (max-width: 650px) {
+  .stats { grid-template-columns: 1fr; gap: 10px; }
+  .stats .stat-card { padding: 19px 20px; min-height: 0; grid-column: auto; }
+  .stats .stat-card h2 { font-size: 29px; }
+  .savings-guide { margin: 0 0 30px; padding: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }
