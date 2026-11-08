@@ -326,6 +326,7 @@ body, button, input, select, textarea { font-family: var(--library-font, Arial, 
 .photo-scan-row { margin: 14px 0 8px; }
 #book-form .photo-scan-row label { display:block; font-weight: 600; margin-bottom: 7px; }
 #book-form .photo-scan-row input { width: 100%; max-width:100%; }
-.barcode-photo-reader { position: absolute; width: 1px; height: 1px; overflow: hidden; left: -9999px; }
+.barcode-photo-reader { width: min(100%, 460px); min-height: 2px; overflow: hidden; margin: 6px 0; }
+.barcode-photo-reader img, .barcode-photo-reader canvas { max-width: 100%; height: auto; }
 .barcode-reader { min-height: 0; }
 .barcode-reader video { width:100% !important; height:auto !important; object-fit:contain; }

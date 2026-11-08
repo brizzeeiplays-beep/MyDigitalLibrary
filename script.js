@@ -675,15 +675,17 @@ $("start-scan").addEventListener("click", async () => {
   scanDetected = false;
   $("start-scan").disabled = true;
   $("barcode-reader").hidden = false;
-  setLookupMessage("Starting the rear camera… Allow access when asked.");
+  setLookupMessage("Requesting webcam access… Allow the camera when your browser asks.");
   try {
     const scanner = new Html5Qrcode("barcode-reader", {
       formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A],
       verbose: false
     });
     barcodeScanner = scanner;
-    // Choose an available camera instead of requiring a rear camera.
-    // Most laptop webcams only have a front-facing camera.
+    // getCameras requests permission in supported browsers and lists the actual devices.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Browser camera API unavailable. Open the site at https:// or http://localhost and use Chrome, Edge, or Safari.");
+    }
     const cameras = await Html5Qrcode.getCameras();
     if (!cameras.length) {
       throw new Error("No camera found. Check your computer's webcam settings.");
@@ -711,7 +713,16 @@ $("start-scan").addEventListener("click", async () => {
     }
   } catch (error) {
     console.error("Barcode scan failed", error);
-    setLookupMessage("Couldn't start the webcam: " + (error?.message || String(error)) + ". Check browser camera permissions, then try Barcode Photo or type the ISBN.");
+    const details = error?.message || String(error);
+    const name = error?.name || "";
+    const advice = /NotAllowed|Permission/i.test(name + details)
+      ? "Camera permission was blocked. Click the camera icon beside your browser address and choose Allow. Also check Windows Settings → Privacy & security → Camera."
+      : /NotFound|DevicesNotFound|No camera/i.test(name + details)
+      ? "No webcam was found. Test it in the Windows Camera app and check the webcam privacy switch."
+      : /NotReadable|TrackStart|Could not start/i.test(name + details)
+      ? "The webcam may be busy. Close Zoom/Teams or the Windows Camera app and retry."
+      : "Try the Windows Camera app to confirm your webcam works, then retry on HTTPS or localhost.";
+    setLookupMessage(`Camera error (${name || "unknown"}): ${details}. ${advice} You can still scan a photo or type the ISBN.`);
     await stopBarcodeScanner();
   } finally {
     scanStarting = false;
@@ -720,11 +731,43 @@ $("start-scan").addEventListener("click", async () => {
 $("stop-scan").addEventListener("click", () => { void stopBarcodeScanner(); });
 
 // Photo scanning works even if live video decoding struggles with a barcode.
+// Photos can contain the ISBN barcode in a small part of a large image.
+// Try the original file, then a centered crop, then boosted contrast versions.
+function makeBarcodeVariant(file, kind) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const sw = img.naturalWidth, sh = img.naturalHeight;
+        // Crop a generous center area without assuming portrait vs landscape.
+        const crop = kind === "center" || kind === "contrast-center";
+        const x = crop ? sw * .08 : 0, y = crop ? sh * .12 : 0;
+        const w = crop ? sw * .84 : sw, h = crop ? sh * .76 : sh;
+        const scale = Math.min(1, 1800 / Math.max(w, h));
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        const ctx = canvas.getContext("2d", {willReadFrequently:true});
+        if (kind.includes("contrast")) ctx.filter = "grayscale(1) contrast(180%)";
+        ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url);
+          if (!blob) return reject(new Error("Could not process the barcode photo"));
+          resolve(new File([blob], "barcode-scan.png", {type:"image/png"}));
+        }, "image/png");
+      } catch(error) { URL.revokeObjectURL(url); reject(error); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not open that photo")); };
+    img.src = url;
+  });
+}
+
 $("barcode-photo").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   if (typeof Html5Qrcode === "undefined") {
-    setLookupMessage("Barcode scanning library unavailable. Enter the ISBN manually.");
+    setLookupMessage("Scanner library didn't load. Check the internet connection and refresh. You can type the ISBN manually.");
     return;
   }
   if (file.size > 15 * 1024 * 1024) {
@@ -733,26 +776,36 @@ $("barcode-photo").addEventListener("change", async (event) => {
     return;
   }
   await stopBarcodeScanner();
+  const photoReader = $("barcode-photo-reader");
   const photoScanner = new Html5Qrcode("barcode-photo-reader", {
-    formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A],
+    formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.UPC_A],
     verbose: false
   });
-  setLookupMessage("Checking the barcode photo…");
   try {
-    const result = await photoScanner.scanFile(file, false);
-    const isbn = readScannedISBN(result);
-    if (!isbn) {
-      setLookupMessage("Photo detected a barcode, but it wasn't a valid 978/979 ISBN. Try a clearer shot of the main barcode or type the digits.");
-      return;
+    let found = "";
+    const variants = ["original", "center", "contrast", "contrast-center"];
+    for (let i = 0; i < variants.length; i++) {
+      setLookupMessage(`Checking barcode photo (${i + 1}/${variants.length})…`);
+      try {
+        const candidate = i === 0 ? file : await makeBarcodeVariant(file, variants[i]);
+        const result = await photoScanner.scanFile(candidate, false);
+        found = readScannedISBN(result);
+        if (found) break;
+      } catch (error) { console.debug("Photo scan attempt", variants[i], error); }
     }
-    lookupInput.value = isbn;
-    setLookupMessage(`ISBN ${isbn} found in photo. Looking up book…`);
-    await runBookLookup(isbn);
+    if (found) {
+      lookupInput.value = found;
+      setLookupMessage(`Found ISBN ${found}! Searching the book database…`);
+      await runBookLookup(found);
+    } else {
+      setLookupMessage("No valid ISBN-13 detected in this photo. Photograph only the large 978/979 barcode straight-on with clear focus, or type the 13 digits printed below it and tap Look Up Book.");
+    }
   } catch (error) {
-    console.warn("Barcode photo scan:", error);
-    setLookupMessage("Couldn't read that photo. Use bright light, fill the photo with the long ISBN barcode, or type the number printed below it.");
+    console.warn("Photo scan error", error);
+    setLookupMessage(`Couldn't process the photo: ${error?.message || String(error)}. You can enter its printed ISBN below.`);
   } finally {
-    try { photoScanner.clear(); } catch (error) { console.warn(error); }
+    try { photoScanner.clear(); } catch (error) { console.debug(error); }
+    photoReader.replaceChildren();
     event.target.value = "";
   }
 });
