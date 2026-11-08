@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MyDigitalLibrary | My Collection</title>
+  <title>MyDigitalLibary | My Collection</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
   <script src="script.js" defer></script>
 </head>
 <body>
   <header class="site-header">
     <nav class="navigation" aria-label="Main navigation">
-      <a class="logo" href="index.html">♡ MyDigitalLibrary</a>
+      <a class="logo" href="index.html">♡ MyDigitalLibary</a>
       <span>My personal library</span>
     </nav>
   </header>
@@ -116,6 +117,30 @@
         <h2 id="form-title">Add a New Book</h2>
         <button type="button" id="close-dialog" class="close-button" aria-label="Close">×</button>
       </div>
+      <!-- Phase 8: optional barcode or title lookup; manual entry still works -->
+      <section class="book-lookup" aria-labelledby="lookup-heading">
+        <h3 id="lookup-heading">Quick add a book</h3>
+        <p class="field-hint">Scan the ISBN barcode on the back of your manga, or search by ISBN/title. Choose a matching edition before saving. You can always enter everything manually below.</p>
+        <div class="lookup-actions">
+          <button type="button" class="secondary-button" id="start-scan">📷 Scan Barcode</button>
+          <button type="button" class="secondary-button" id="stop-scan" hidden>Stop Camera</button>
+        </div>
+        <div id="barcode-reader" class="barcode-reader" hidden></div>
+        <p class="field-hint scan-help">For best results, point the rear camera at the <strong>long 13-digit barcode starting with 978 or 979</strong> (not the small 5-digit price barcode). Hold the book still in bright, even light and move the phone back slightly until the lines are sharp.</p>
+        <div class="photo-scan-row">
+          <label for="barcode-photo">Or scan a barcode photo</label>
+          <input id="barcode-photo" type="file" accept="image/*" capture="environment">
+          <p class="field-hint">Take a close, sharp photo of the ISBN barcode, or choose an existing photo. If scanning fails, type the 13 digits in the ISBN or Book Title box.</p>
+        </div>
+        <div id="barcode-photo-reader" class="barcode-photo-reader" aria-hidden="true"></div>
+        <label for="lookup-query">ISBN or Book Title</label>
+        <div class="lookup-search-row">
+          <input id="lookup-query" type="search" placeholder="9781974700523 or One Piece Vol. 1" autocomplete="off">
+          <button id="lookup-search" type="button" class="primary-button">Look Up</button>
+        </div>
+        <p id="lookup-message" role="status" aria-live="polite" class="lookup-message"></p>
+        <div id="lookup-results" class="lookup-results" aria-label="Book matches"></div>
+      </section>
       <label for="book-title">Book Title *</label>
       <input id="book-title" type="text" maxlength="120" required>
       <label for="book-author">Author</label>
@@ -173,6 +198,6 @@
     </div>
   </dialog>
 
-  <footer><p>MyDigitalLibrary ♡ Made for book lovers</p></footer>
+  <footer><p>MyDigitalLibary ♡ Made for book lovers</p></footer>
 </body>
 </html>

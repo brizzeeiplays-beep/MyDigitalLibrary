@@ -286,3 +286,46 @@ body, button, input, select, textarea { font-family: var(--library-font, Arial, 
   }
   .stats .stat-card:nth-child(n+4) h2 { font-size: 30px; }
 }
+
+
+/* Phase 8: search + barcode scanner within Add Book */
+.book-lookup { margin: 4px 0 24px; padding: 16px; border: 1px solid var(--border, #ddd); border-radius: 12px; background: var(--soft, #f7f7f7); }
+.book-lookup h3 { margin: 0 0 6px; font-size: 17px; }
+.book-lookup .field-hint { line-height: 1.5; }
+.lookup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.lookup-search-row { display: flex; gap: 8px; align-items: stretch; }
+#book-form .lookup-search-row input { flex: 1; min-width: 0; }
+.lookup-search-row .primary-button { flex: none; }
+.barcode-reader { max-width: 100%; margin: 12px 0; background: #111; overflow: hidden; border-radius: 8px; }
+.barcode-reader[hidden], #stop-scan[hidden] { display: none !important; }
+.barcode-reader video { max-width: 100%; }
+.lookup-message { margin: 10px 0 0; font-size: 13px; color: var(--ink, #333); line-height: 1.4; }
+.lookup-results { display: grid; gap: 8px; margin-top: 12px; }
+.lookup-result { display: flex; gap: 12px; text-align: left; align-items: center; width: 100%; padding: 10px; border: 1px solid var(--border, #ddd); border-radius: 8px; background: var(--paper, white); color: var(--ink, #222); cursor: pointer; }
+.lookup-result:hover, .lookup-result:focus-visible { outline: 2px solid var(--accent, #444); }
+.lookup-result img { width: 48px; height: 72px; object-fit: contain; flex-shrink: 0; }
+.lookup-result span { flex: 1; font-size: 13px; line-height: 1.4; }
+.lookup-result small { display: block; color: var(--muted, #666); font-size: 11px; }
+@media (max-width: 420px) { .lookup-search-row { flex-direction: column; } }
+
+/* Heart icon on generated covers (actual cover artwork remains unobstructed) */
+.book-cover .cover-heart {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 24px; line-height: 1; letter-spacing: 0;
+  font-family: Arial, sans-serif;
+}
+.lookup-result .lookup-no-cover {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 48px; height: 72px; border-radius: 4px;
+  background: var(--soft, #f3f3f3); color: var(--ink, #555);
+  font: 26px Arial, sans-serif;
+}
+
+/* Barcode scanning clarity and photo fallback */
+.scan-help { margin: 10px 0; line-height: 1.5; }
+.photo-scan-row { margin: 14px 0 8px; }
+#book-form .photo-scan-row label { display:block; font-weight: 600; margin-bottom: 7px; }
+#book-form .photo-scan-row input { width: 100%; max-width:100%; }
+.barcode-photo-reader { position: absolute; width: 1px; height: 1px; overflow: hidden; left: -9999px; }
+.barcode-reader { min-height: 0; }
+.barcode-reader video { width:100% !important; height:auto !important; object-fit:contain; }

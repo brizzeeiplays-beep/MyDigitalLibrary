@@ -97,7 +97,7 @@ function appendCover(parent, book, className = "book-cover") {
   const labels = document.createElement("div");
   labels.className = "cover-placeholder-labels";
   labels.append(
-    makeText("span", "cover-label", "♡"),
+    makeText("span", "cover-label cover-heart", "♥"),
     makeText("span", "cover-title", book.title),
     makeText("span", "cover-volume", book.volume !== "" && book.volume != null ? `VOL. ${book.volume}` : "MY BOOK")
   );
@@ -308,6 +308,9 @@ function openForm(book = null) {
     $("book-value").value = book.estimatedValue ?? "";
     $("book-status").value = statusOptions.includes(book.status) ? book.status : "Unread";
   }
+  $("lookup-query").value = "";
+  $("lookup-message").textContent = "";
+  $("lookup-results").replaceChildren();
   bookDialog.showModal();
 }
 $("add-book").addEventListener("click", () => openForm());
@@ -452,6 +455,313 @@ form.addEventListener("submit", async (event) => {
     submit.textContent = editingId ? "Save Changes" : "Save Book";
   }
 });
+
+
+/* PHASE 8: Optional book lookup and barcode scanning.
+ * Book metadata is retrieved from Open Library, not Amazon.
+ * Price Paid and Current Value Price are ALWAYS entered manually.
+ */
+const lookupInput = $("lookup-query");
+const lookupMessage = $("lookup-message");
+const lookupResults = $("lookup-results");
+let barcodeScanner = null;
+let scanStarting = false;
+let lookupSequence = 0;
+
+function setLookupMessage(message) { lookupMessage.textContent = message; }
+function isbnClean(value) { return String(value || "").replace(/[^0-9Xx]/g, "").toUpperCase(); }
+function lookupIsISBN(value) {
+  const clean = isbnClean(value);
+  return (clean.length === 10 || clean.length === 13) && validISBN(clean);
+}
+function getVolumeFromTitle(title) {
+  const match = String(title).match(/(?:vol(?:ume)?\.?\s*|\#)(\d{1,4})(?:\b|$)/i);
+  return match ? match[1] : "";
+}
+function getSeriesFromTitle(title) {
+  const series = String(title).replace(/(?:[,\s:–—-]*)(?:vol(?:ume)?\.?\s*|\#)\d{1,4}\b.*$/i, "").trim();
+  return series === title ? "" : series;
+}
+function availableCover(coverId, isbn) {
+  if (Number.isSafeInteger(Number(coverId)) && Number(coverId) > 0)
+    return `https://covers.openlibrary.org/b/id/${Number(coverId)}-L.jpg`;
+  // If a verified edition does not identify a cover, leave it blank.
+  return "";
+}
+function normalizeSearchDoc(doc) {
+  const title = cleanText(doc.title, 120);
+  if (!title) return null;
+  return {
+    title,
+    author: cleanText(Array.isArray(doc.author_name) ? doc.author_name.slice(0, 3).join(", ") : "", 100),
+    series: cleanText(getSeriesFromTitle(title), 100),
+    volume: getVolumeFromTitle(title),
+    image: availableCover(doc.cover_i),
+    edition: Array.isArray(doc.edition_key) ? doc.edition_key[0] : "",
+    year: doc.first_publish_year || ""
+  };
+}
+async function fetchOpenLibraryJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      if (response.status === 404) return null;
+      throw new Error(`Book service returned HTTP ${response.status}`);
+    }
+    return await response.json();
+  } finally { clearTimeout(timeout); }
+}
+async function findByISBN(isbn) {
+  const edition = await fetchOpenLibraryJson(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`);
+  if (!edition) return [];
+  let author = "";
+  let searchCover = "";
+  // Author names are often absent from an edition's JSON. A second search fills them in when available.
+  try {
+    const other = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&fields=title,author_name,cover_i,edition_key,first_publish_year&limit=5`);
+    const docs = (other?.docs || []).map(normalizeSearchDoc).filter(Boolean);
+    if (docs.length) {
+      author = docs[0].author;
+      searchCover = docs.find(doc => doc.image)?.image || "";
+    }
+  } catch (error) { console.warn("Author fallback unavailable", error); }
+  const title = cleanText(edition.title || "", 120);
+  if (!title) return [];
+  return [{
+    title,
+    author,
+    series: cleanText(getSeriesFromTitle(title), 100),
+    volume: getVolumeFromTitle(title),
+    image: availableCover((edition.covers || [])[0]) || searchCover,
+    edition: edition.key?.split("/").pop() || "",
+    year: edition.publish_date || ""
+  }];
+}
+async function findByTitle(title) {
+  const query = new URLSearchParams({ q: title, fields: "title,author_name,cover_i,edition_key,first_publish_year", limit: "8" });
+  const response = await fetchOpenLibraryJson(`https://openlibrary.org/search.json?${query.toString()}`);
+  return (response?.docs || []).map(normalizeSearchDoc).filter(Boolean);
+}
+function applyLookupResult(book) {
+  $("book-title").value = book.title;
+  $("book-author").value = book.author;
+  $("book-series").value = book.series;
+  $("book-volume").value = book.volume;
+  // Leave Price Paid, Current Value, and Reading Status completely untouched.
+  if (book.image && isSafeImage(book.image)) {
+    // A previously chosen upload would otherwise override this searched cover.
+    $("book-cover").value = "";
+    $("remove-cover").checked = false;
+    $("book-cover-url").value = book.image;
+    updateCoverPreview();
+  } else {
+    // An old cover/image isn't silently removed when the result has none.
+    setLookupMessage("Book details added. No cover was available; you can upload your own.");
+  }
+  lookupResults.replaceChildren();
+  if (book.image) setLookupMessage("Details and cover link added! Check the cover preview below, then enter prices and Save Book. If the picture is missing, upload a cover file instead.");
+  $("book-title").focus();
+}
+function showLookupResults(results) {
+  lookupResults.replaceChildren();
+  for (const b of results) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "lookup-result";
+    if (b.image) {
+      const img = document.createElement("img");
+      img.src = b.image;
+      img.alt = `Cover artwork for ${b.title}`;
+      img.loading = "lazy";
+      img.onerror = () => {
+        img.replaceWith(makeText("span", "lookup-no-cover", "♥"));
+      };
+      button.appendChild(img);
+    } else {
+      const fallback = makeText("span", "lookup-no-cover", "♥");
+      fallback.setAttribute("aria-label", "No cover image available");
+      button.appendChild(fallback);
+    }
+    const content = document.createElement("span");
+    content.append(makeText("strong", "", b.title));
+    content.append(makeText("small", "", `${b.author || "Author unknown"}${b.year ? ` · ${b.year}` : ""}`));
+    content.append(makeText("small", "", b.image ? "Cover available — tap to use" : "No image found — upload your own"));
+    button.appendChild(content);
+    button.addEventListener("click", () => applyLookupResult(b));
+    lookupResults.appendChild(button);
+  }
+}
+async function runBookLookup(query = lookupInput.value) {
+  const text = String(query || "").trim();
+  const sequence = ++lookupSequence;
+  lookupResults.replaceChildren();
+  if (!text) { setLookupMessage("Enter a book title or ISBN first."); return; }
+  const maybeISBN = isbnClean(text);
+  const isCandidateISBN = /^[0-9Xx\s-]+$/.test(text) && [10, 13].includes(maybeISBN.length);
+  if (isCandidateISBN && !validISBN(maybeISBN)) { setLookupMessage("That ISBN has an invalid check digit. Check the numbers and try again."); return; }
+  setLookupMessage("Searching Open Library…");
+  $("lookup-search").disabled = true;
+  try {
+    const results = isCandidateISBN ? await findByISBN(maybeISBN) : await findByTitle(text);
+    if (sequence !== lookupSequence) return;
+    if (results.length) {
+      showLookupResults(results);
+      setLookupMessage(`${results.length} matching ${results.length === 1 ? "edition" : "results"} found. Tap the correct book to fill the form. Check the cover and volume before saving.`);
+    } else {
+      setLookupMessage("No matching edition was found. Try searching by title, or enter the book manually below.");
+    }
+  } catch (error) {
+    if (sequence !== lookupSequence) return;
+    console.error("Book lookup failed", error);
+    setLookupMessage("Lookup couldn't connect. Check your internet connection; open the published HTTPS site, or add the book manually below.");
+  } finally { if (sequence === lookupSequence) $("lookup-search").disabled = false; }
+}
+$("lookup-search").addEventListener("click", () => runBookLookup());
+lookupInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); runBookLookup(); } });
+
+// Accept only verified ISBN-13 book codes, not the supplemental 5-digit price barcode.
+function readScannedISBN(raw) {
+  const number = isbnClean(raw);
+  return /^(978|979)\d{10}$/.test(number) && validISBN(number) ? number : "";
+}
+let scanDetected = false;
+let stopPromise = null;
+
+async function stopBarcodeScanner() {
+  if (stopPromise) return stopPromise;
+  const current = barcodeScanner;
+  barcodeScanner = null;
+  $("stop-scan").hidden = true;
+  stopPromise = (async () => {
+    if (current) {
+      try { await current.stop(); } catch (error) { console.warn("Scanner stop:", error); }
+      try { current.clear(); } catch (error) { console.warn("Scanner clear:", error); }
+    }
+    $("barcode-reader").hidden = true;
+    $("start-scan").disabled = false;
+  })();
+  try { await stopPromise; } finally { stopPromise = null; }
+}
+
+async function handleDetectedBarcode(raw) {
+  if (scanDetected) return;
+  const isbn = readScannedISBN(raw);
+  if (!isbn) {
+    // An EAN-5 price label can be detected first. Keep the camera active.
+    setLookupMessage("Detected a barcode, but not a valid 978/979 ISBN-13. Aim at the larger 13-digit barcode, or enter its numbers below.");
+    return;
+  }
+  scanDetected = true;
+  lookupInput.value = isbn;
+  setLookupMessage(`ISBN ${isbn} scanned! Looking up the book…`);
+  // Release the camera before searching, so the user can inspect results.
+  await stopBarcodeScanner();
+  await runBookLookup(isbn);
+}
+
+$("start-scan").addEventListener("click", async () => {
+  if (scanStarting || barcodeScanner || stopPromise) return;
+  if (!window.isSecureContext) {
+    setLookupMessage("Camera scanning needs HTTPS. Open your published GitHub Pages site on the iPhone, or type an ISBN.");
+    return;
+  }
+  if (typeof Html5Qrcode === "undefined") {
+    setLookupMessage("The free barcode scanning library didn't load. Check your connection and refresh, or enter the ISBN manually.");
+    return;
+  }
+  scanStarting = true;
+  scanDetected = false;
+  $("start-scan").disabled = true;
+  $("barcode-reader").hidden = false;
+  setLookupMessage("Starting the rear camera… Allow access when asked.");
+  try {
+    const scanner = new Html5Qrcode("barcode-reader", {
+      formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A],
+      verbose: false
+    });
+    barcodeScanner = scanner;
+    // Choose an available camera instead of requiring a rear camera.
+    // Most laptop webcams only have a front-facing camera.
+    const cameras = await Html5Qrcode.getCameras();
+    if (!cameras.length) {
+      throw new Error("No camera found. Check your computer's webcam settings.");
+    }
+    const preferred = cameras.find(camera =>
+      /back|rear|environment/i.test(camera.label)
+    ) || cameras[0];
+    setLookupMessage(`Starting camera: ${preferred.label || "Webcam"}…`);
+    await scanner.start(
+      preferred.id,
+      {
+        fps: 10,
+        // Use a wide, automatically sized scanning guide on all devices.
+        qrbox: (w, h) => ({
+          width: Math.max(1, Math.min(340, Math.floor(w * 0.9))),
+          height: Math.max(1, Math.min(140, Math.floor(h * 0.38)))
+        })
+      },
+      (code) => { void handleDetectedBarcode(code); },
+      () => {} // No match in a frame is normal.
+    );
+    if (!scanDetected) {
+      $("stop-scan").hidden = false;
+      setLookupMessage("Camera ready. Hold the 978/979 ISBN barcode INSIDE the guide, with sharp, readable lines. Laptop webcams may not focus well up close; try the Barcode Photo option if needed.");
+    }
+  } catch (error) {
+    console.error("Barcode scan failed", error);
+    setLookupMessage("Couldn't start the webcam: " + (error?.message || String(error)) + ". Check browser camera permissions, then try Barcode Photo or type the ISBN.");
+    await stopBarcodeScanner();
+  } finally {
+    scanStarting = false;
+  }
+});
+$("stop-scan").addEventListener("click", () => { void stopBarcodeScanner(); });
+
+// Photo scanning works even if live video decoding struggles with a barcode.
+$("barcode-photo").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (typeof Html5Qrcode === "undefined") {
+    setLookupMessage("Barcode scanning library unavailable. Enter the ISBN manually.");
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    setLookupMessage("Choose a barcode photo smaller than 15 MB.");
+    event.target.value = "";
+    return;
+  }
+  await stopBarcodeScanner();
+  const photoScanner = new Html5Qrcode("barcode-photo-reader", {
+    formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8, Html5QrcodeSupportedFormats.UPC_A],
+    verbose: false
+  });
+  setLookupMessage("Checking the barcode photo…");
+  try {
+    const result = await photoScanner.scanFile(file, false);
+    const isbn = readScannedISBN(result);
+    if (!isbn) {
+      setLookupMessage("Photo detected a barcode, but it wasn't a valid 978/979 ISBN. Try a clearer shot of the main barcode or type the digits.");
+      return;
+    }
+    lookupInput.value = isbn;
+    setLookupMessage(`ISBN ${isbn} found in photo. Looking up book…`);
+    await runBookLookup(isbn);
+  } catch (error) {
+    console.warn("Barcode photo scan:", error);
+    setLookupMessage("Couldn't read that photo. Use bright light, fill the photo with the long ISBN barcode, or type the number printed below it.");
+  } finally {
+    try { photoScanner.clear(); } catch (error) { console.warn(error); }
+    event.target.value = "";
+  }
+});
+bookDialog.addEventListener("close", () => {
+  lookupSequence++;
+  scanDetected = true;
+  void stopBarcodeScanner();
+});
+
 
 // Download an entire JSON backup, including book cover image data.
 $("export-books").addEventListener("click", () => {
